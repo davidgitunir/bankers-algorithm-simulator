@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulador — Algoritmo del Banquero (Dinámico + Seguro)</title>
+  <style>
+    :root{
+      --bg:#0f172a; --card:#111827; --muted:#94a3b8; --text:#e5e7eb;
+      --accent:#22c55e; --accent-2:#60a5fa; --danger:#ef4444; --warning:#f59e0b;
+      --border:#1f2937; --soft:#0b1225; --radius:14px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background: radial-gradient(1200px 600px at 10% 0%, #0b1530 0%, var(--bg) 55%), var(--bg);
+      color:var(--text);
+      font: 16px/1.45 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans";
+      letter-spacing:.2px;
+    }
+    header{
+      position:sticky; top:0; z-index:5; backdrop-filter:saturate(1.2) blur(6px);
+      background:linear-gradient(180deg,rgba(17,24,39,.86),rgba(17,24,39,.66));
+      border-bottom:1px solid var(--border);
+      padding:20px 24px;
+    }
+    header h1{margin:0; font-size: clamp(20px, 2.6vw, 28px);}
+    header p{margin:6px 0 0; color:var(--muted); font-size:14px}
+    .container{max-width:1200px; margin:24px auto; padding:0 16px}
+    .grid{display:grid; gap:16px; grid-template-columns: 1.1fr 2fr;}
+    .card{
+      background: linear-gradient(180deg, #0f162d, #0e1527);
+      border:1px solid var(--border); border-radius:var(--radius);
+      padding:16px; box-shadow: 0 10px 30px rgba(0,0,0,.25), inset 0 1px 0 rgba(255,255,255,.02);
+    }
+    .controls{position:sticky; top:96px; align-self:start}
+    .row{display:flex; flex-wrap:wrap; gap:12px; align-items:center}
+    .row + .row{margin-top:12px}
+    label{font-size:13px; color:var(--muted)}
+    .field{display:flex; flex-direction:column; gap:6px; min-width:140px}
+    input[type="number"], input[type="text"]{
+      background:#0b1225; border:1px solid var(--border); color:var(--text);
+      padding:10px 12px; border-radius:10px; outline:none; width:100%;
+      transition:border .2s, box-shadow .2s;
+    }
+    input[type="number"]:focus, input[type="text"]:focus{
+      border-color: var(--accent-2); box-shadow: 0 0 0 3px rgba(96,165,250,.15);
+    }
+    .totals-wrap{display:flex; flex-wrap:wrap; gap:12px}
+    .btnbar{display:flex; flex-wrap:wrap; gap:10px; margin-top:12px}
+    button{
+      appearance:none; border:1px solid var(--border); color:var(--text); background:#0a1022;
+      padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:600; letter-spacing:.2px;
+      transition: transform .04s ease, border .2s, background .2s, box-shadow .2s;
+    }
+    button:hover{border-color:#2b3347; box-shadow:0 6px 20px rgba(0,0,0,.25) inset}
+    button:active{transform: translateY(1px) scale(.995)}
+    .btn-primary{background:linear-gradient(180deg, #1f7aec, #1b66d6); border-color:#2467c7}
+    .btn-success{background:linear-gradient(180deg, #1fb86a, #169e5a); border-color:#169e5a}
+    .btn-safe{background:linear-gradient(180deg, #34d399, #10b981); border-color:#10b981}
+    .btn-danger{background:linear-gradient(180deg, #ef4444, #cc3434); border-color:#cc3434}
+    .btn-ghost{background:#0b1225}
+    .muted{color:var(--muted)}
+    .tables{display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px}
+    table{width:100%; border-collapse:separate; border-spacing:0; overflow:hidden; border-radius:12px; border:1px solid var(--border)}
+    th, td{padding:10px 8px; text-align:center}
+    thead th{background:#111a33; color:#cbd5e1; border-bottom:1px solid var(--border); font-weight:700}
+    tbody tr:nth-child(odd) td{background:#0c1430}
+    tbody tr:nth-child(even) td{background:#0a1228}
+    tbody td input{
+      width:100%; text-align:center; background:transparent; border:none; color:var(--text);
+      padding:8px 4px; outline:none; font-weight:600;
+    }
+    .tag{display:inline-flex; gap:6px; align-items:center; padding:6px 10px; border-radius:999px; font-size:13px;
+      background:#0a1225; border:1px solid var(--border); color:#9fb3d6;}
+    .pill{display:inline-block; padding:6px 10px; border-radius:999px; background:#081027; border:1px solid var(--border); color:#a3b2cf}
+    .error{color:#fecaca} .ok{color:#bbf7d0}
+    .hl-warn{box-shadow: inset 0 0 0 2px var(--warning)}
+    .hl-danger{box-shadow: inset 0 0 0 2px var(--danger)}
+    .footer{margin-top:18px; color:var(--muted); font-size:13px}
+    .sequence{font-weight:700; font-size:16px}
+    @media (max-width: 980px){
+      .grid{grid-template-columns: 1fr}
+      .controls{position:static}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Simulador del Algoritmo del Banquero</h1>
+    <p>Procesos/recursos <b>dinámicos</b>, <b>Max ≤ Totales</b>, relleno aleatorio y <b>Ejemplo SEGURO</b>. “Secuencia segura” <u>no modifica</u> los datos.</p>
+  </header>
+
+  <div class="container grid">
+    <!-- CONTROLES -->
+    <section class="card controls" aria-label="Controles">
+      <div class="row">
+        <div class="field">
+          <label for="numProc">Nº de procesos</label>
+          <input id="numProc" type="number" min="1" max="50" value="5" />
+        </div>
+        <div class="field">
+          <label for="numRes">Nº de recursos</label>
+          <input id="numRes" type="number" min="1" max="10" value="3" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="min-width: 320px; flex:1">
+          <label for="resNames">Nombres de recursos (opcional, separados por coma)</label>
+          <input id="resNames" type="text" placeholder="A,B,C  (si vacío: A, B, C, ...)" />
+        </div>
+      </div>
+      <div class="row">
+        <div class="field" style="flex:1; min-width: 100%">
+          <label>Instancias totales por recurso</label>
+          <div id="totalsWrap" class="totals-wrap"></div>
+        </div>
+      </div>
+
+      <div class="btnbar">
+        <button class="btn-primary" id="btnBuild">Generar tablas</button>
+        <button class="btn-success" id="btnRandom">Relleno aleatorio</button>
+        <button class="btn-safe" id="btnRandomSafe">Ejemplo SEGURO</button>
+        <button class="btn-ghost" id="btnAvail">Calcular Available</button>
+        <button class="btn-ghost" id="btnNeed">Calcular Need</button>
+        <button class="btn-ghost" id="btnSafety">Secuencia segura</button>
+        <button class="btn-danger" id="btnReset">Reset</button>
+      </div>
+      <div id="msg" class="footer"></div>
+    </section>
+
+    <!-- TABLAS -->
+    <section class="tables">
+      <div class="card">
+        <div class="row" style="justify-content:space-between; align-items:center">
+          <h3 style="margin:0">Allocation</h3>
+          <!-- <span class="tag">Reglas: Allocation ≤ Max  •  ΣAllocation ≤ Totales</span> -->
+        </div>
+        <table id="tblAlloc" aria-label="Tabla Allocation"></table>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0">Max</h3>
+        <!-- <p class="muted" style="margin:4px 0 8px">Cada celda está limitada por <b>min(10, Totales del recurso)</b></p> -->
+        <table id="tblMax" aria-label="Tabla Max"></table>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0">Need</h3>
+        <table id="tblNeed" aria-label="Tabla Need"></table>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0">Available</h3>
+        <table id="tblAvail" aria-label="Tabla Available"></table>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0">Secuencia segura</h3>
+        <p id="seq" class="sequence pill" style="margin-top:8px">—</p>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ===== Modelo dinámico de recursos =====
+    let R = []; // etiquetas de recursos actuales
+
+    const els = {
+      numProc: document.getElementById('numProc'),
+      numRes: document.getElementById('numRes'),
+      resNames: document.getElementById('resNames'),
+      totalsWrap: document.getElementById('totalsWrap'),
+      msg: document.getElementById('msg'),
+      seq: document.getElementById('seq'),
+      btnBuild: document.getElementById('btnBuild'),
+      btnRandom: document.getElementById('btnRandom'),
+      btnRandomSafe: document.getElementById('btnRandomSafe'),
+      btnAvail: document.getElementById('btnAvail'),
+      btnNeed: document.getElementById('btnNeed'),
+      btnSafety: document.getElementById('btnSafety'),
+      btnReset: document.getElementById('btnReset'),
+      tblAlloc: document.getElementById('tblAlloc'),
+      tblMax: document.getElementById('tblMax'),
+      tblNeed: document.getElementById('tblNeed'),
+      tblAvail: document.getElementById('tblAvail'),
+    };
+
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const valNum = (v, def=0) => {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : def;
+    };
+    function setMessage(html, type='') {
+      els.msg.innerHTML = html;
+      els.msg.classList.remove('error','ok');
+      if (type) els.msg.classList.add(type);
+    }
+
+    function autoLabels(m) {
+      const base = [];
+      for (let i=0;i<m;i++){
+        const ch = String.fromCharCode(65 + (i % 26));
+        base.push(i < 26 ? ch : ch + Math.floor(i/26));
+      }
+      return base;
+    }
+
+    // Construir/actualizar panel de totales y etiquetas R
+    function buildResources() {
+      const m = clamp(valNum(els.numRes.value, 3), 1, 10);
+      // preservar totales previos por etiqueta
+      const prevTotals = {};
+      els.totalsWrap.querySelectorAll('input[type="number"]').forEach(inp=>{
+        prevTotals[inp.dataset.r] = valNum(inp.value, 10);
+      });
+
+      // etiquetas desde input o auto
+      const raw = (els.resNames.value || '').split(',').map(s=>s.trim()).filter(Boolean);
+      const labels = raw.length ? raw.slice(0, m) : autoLabels(m);
+      while (labels.length < m) labels.push(autoLabels(m)[labels.length]);
+      R = labels;
+
+      // render inputs de totales
+      els.totalsWrap.innerHTML = '';
+      R.forEach((lab, idx)=>{
+        const wrap = document.createElement('div');
+        wrap.className = 'field';
+        const id = `tot_${idx}`;
+        wrap.innerHTML = `
+          <label for="${id}">Instancias totales ${lab}</label>
+          <input id="${id}" data-r="${lab}" type="number" min="0" max="999" value="${prevTotals[lab] ?? 10}" />
+        `;
+        els.totalsWrap.appendChild(wrap);
+      });
+
+      // Cuando cambian totales, forzar límites en Max
+      els.totalsWrap.querySelectorAll('input[type="number"]').forEach(inp=>{
+        inp.addEventListener('input', enforceMaxCaps);
+      });
+    }
+
+    function readTotals() {
+      const map = {};
+      els.totalsWrap.querySelectorAll('input[type="number"]').forEach(inp=>{
+        map[inp.dataset.r] = Math.max(0, valNum(inp.value, 0));
+      });
+      return R.map(lab => map[lab] ?? 0);
+    }
+
+    // ===== Construcción de tablas =====
+    function buildTables(n = 5) {
+      n = clamp(valNum(n, 5), 1, 50);
+
+      const thead = () => `
+        <thead>
+          <tr><th></th>${R.map(h=>`<th>${h}</th>`).join('')}</tr>
+        </thead>`;
+      const rowInputs = (i, prefix) => `
+        <tr>
+          <td>P${i+1}</td>
+          ${R.map((_,j)=> `<td><input type="number" inputmode="numeric" min="0" max="10" data-r="${j}" data-p="${i}" data-t="${prefix}" value="0"></td>`).join('')}
+        </tr>`;
+
+      // Allocation & Max
+      els.tblAlloc.innerHTML = thead() + `<tbody>${Array.from({length:n}, (_,i)=>rowInputs(i,'alloc')).join('')}</tbody>`;
+      els.tblMax.innerHTML   = thead() + `<tbody>${Array.from({length:n}, (_,i)=>rowInputs(i,'max')).join('')}</tbody>`;
+
+      // Need (solo lectura)
+      const needRows = Array.from({length:n}, (_,i)=>`
+        <tr>
+          <td>P${i+1}</td>
+          ${R.map(()=> `<td><input type="number" min="0" max="10" value="0" disabled></td>`).join('')}
+        </tr>`).join('');
+      els.tblNeed.innerHTML = thead() + `<tbody>${needRows}</tbody>`;
+
+      // Available (una fila con m columnas)
+      els.tblAvail.innerHTML = `
+        <thead><tr>${R.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+        <tbody><tr>${R.map(()=> `<td><input type="number" min="0" value="0" disabled></td>`).join('')}</tr></tbody>`;
+
+      // Enlazar evento para hacer clamp de Max al escribir (limita a min(10, Totales))
+      els.tblMax.addEventListener('input', onMaxInputClamp);
+
+      // Aplicar límites por Totales a Max
+      enforceMaxCaps();
+
+      setMessage(`<span class="ok">Tablas generadas para <b>${n}</b> procesos y <b>${R.length}</b> recursos (${R.join(', ')}).</span>`, 'ok');
+      els.seq.textContent = '—';
+    }
+
+    // ===== Helpers de matrices =====
+    function readMatrix(tableEl) {
+      const rows = Array.from(tableEl.querySelectorAll('tbody tr'));
+      return rows.map(tr => Array.from(tr.querySelectorAll('input')).map(inp => clamp(valNum(inp.value, 0), 0, 10)));
+    }
+    function writeMatrix(tableEl, matrix, {disabled=false, highlight=null}={}) {
+      const rows = Array.from(tableEl.querySelectorAll('tbody tr'));
+      rows.forEach((tr,i)=>{
+        const inputs = Array.from(tr.querySelectorAll('input'));
+        inputs.forEach((inp,j)=>{
+          let v = matrix?.[i]?.[j] ?? 0;
+          // respetar límites si es Max
+          if (tableEl === els.tblMax) {
+            const cap = maxCapForColumn(j);
+            v = clamp(v, 0, cap);
+          }
+          inp.value = v;
+          if (disabled) inp.setAttribute('disabled', 'disabled'); else inp.removeAttribute('disabled');
+          inp.classList.remove('hl-warn','hl-danger');
+          if (highlight?.[i]?.[j]) inp.classList.add(highlight[i][j]);
+        });
+      });
+    }
+    function sumCols(matrix, m = R.length) {
+      const sums = Array(m).fill(0);
+      matrix.forEach(row => row.forEach((v,c)=> sums[c]+=v));
+      return sums;
+    }
+
+    // ===== LÍMITES Max ≤ Totales =====
+    function maxCapForColumn(j){
+      const totals = readTotals();
+      return Math.min(10, totals[j] ?? 0);
+    }
+    function enforceMaxCaps(){
+      const totals = readTotals();
+      const caps = totals.map(t => Math.min(10, t));
+      // aplicar atributo max y clamp a cada input de Max
+      els.tblMax.querySelectorAll('tbody tr').forEach(tr=>{
+        const inputs = Array.from(tr.querySelectorAll('input'));
+        inputs.forEach((inp, j)=>{
+          const cap = caps[j] ?? 0;
+          inp.setAttribute('max', cap);
+          const v = valNum(inp.value, 0);
+          if (v > cap) inp.value = cap;
+        });
+      });
+      // recalcular Need si estaba mostrado
+      calcNeed(true);
+    }
+    function onMaxInputClamp(e){
+      const target = e.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (target.dataset.t !== 'max') return;
+      const j = Number(target.dataset.r);
+      const cap = maxCapForColumn(j);
+      target.value = String(clamp(valNum(target.value, 0), 0, cap));
+    }
+
+    // ===== Cálculos =====
+    function calcAvailable(write=true) {
+      const totals = readTotals();
+      const alloc = readMatrix(els.tblAlloc);
+      const sumA = sumCols(alloc);
+      const avail = totals.map((t,i)=> t - sumA[i]);
+      const neg = avail.map(v => v < 0);
+      if (neg.some(Boolean)) {
+        const probs = neg.map((f,i)=> f? R[i] : null).filter(Boolean).join(', ');
+        setMessage(`⚠️ La suma de <b>Allocation</b> supera las instancias totales en: ${probs}. Ajusta los valores.`, 'error');
+      } else {
+        setMessage(`Available = Totales − ΣAllocation = [${avail.join(', ')}]`, 'ok');
+      }
+      if (write) {
+        const rowInputs = els.tblAvail.querySelector('tbody tr').querySelectorAll('input');
+        avail.forEach((v,i)=>{
+          rowInputs[i].value = Math.max(0, v);
+          rowInputs[i].classList.toggle('hl-danger', v < 0);
+        });
+      }
+      return avail;
+    }
+
+    function calcNeed(write=true) {
+      const alloc = readMatrix(els.tblAlloc);
+      const maxm  = readMatrix(els.tblMax);
+      const totals = readTotals();
+      const n = alloc.length, m = R.length;
+
+      const need = Array.from({length:n}, (_,i)=> Array.from({length:m}, (_,j)=> maxm[i][j] - alloc[i][j]));
+      let anyAllocGtMax = false;
+      let anyMaxGtTotals = false;
+
+      const hl = Array.from({length:n}, ()=> Array(m).fill(''));
+      for (let i=0;i<n;i++){
+        for (let j=0;j<m;j++){
+          if (need[i][j] < 0) { anyAllocGtMax = true; hl[i][j] = 'hl-danger'; }
+          if (maxm[i][j] > totals[j]) { anyMaxGtTotals = true; hl[i][j] = 'hl-warn'; }
+        }
+      }
+
+      if (write) writeMatrix(els.tblNeed, need.map(row=> row.map(v=> Math.max(0,v))), {disabled:true, highlight:hl});
+
+      if (anyMaxGtTotals) {
+        setMessage(`⚠️ En <b>Max</b> hay valores que superan los <b>Totales</b> del recurso. Se han limitado automáticamente.`, 'error');
+        // asegurar límites por si el usuario pegó datos
+        enforceMaxCaps();
+      } else if (anyAllocGtMax) {
+        setMessage(`❌ Hay celdas donde <b>Allocation &gt; Max</b>. Corrige las resaltadas en rojo.`, 'error');
+      } else {
+        setMessage(`Need = Max − Allocation calculado correctamente.`, 'ok');
+      }
+      return need;
+    }
+
+    // ===== Comprobación de secuencia segura (NO modifica datos) =====
+    function safetySequence() {
+      // Calcular internamente sin escribir en tablas
+      const availVec = calcAvailable(false);
+      const need = calcNeed(false);
+      const alloc = readMatrix(els.tblAlloc);
+      const m = R.length;
+
+      const invalidNeed = need.some(row => row.some(v => v < 0));
+      const invalidAvail = availVec.some(v => v < 0);
+      if (invalidNeed) { setMessage('❌ No se puede evaluar: hay Allocation > Max.', 'error'); els.seq.textContent = '—'; return; }
+      if (invalidAvail){ setMessage('❌ No se puede evaluar: Available negativo (ΣAllocation > Totales).', 'error'); els.seq.textContent = '—'; return; }
+
+      // Copias locales (no se reflejan en la UI)
+      let work = availVec.slice();
+      const n = alloc.length;
+      const finish = Array(n).fill(false);
+      const seq = [];
+      let progressed = true;
+      const needNN = need.map(row => row.map(v => Math.max(0, v)));
+
+      while (seq.length < n && progressed) {
+        progressed = false;
+        for (let i=0;i<n;i++){
+          if (finish[i]) continue;
+          const canRun = needNN[i].every((needj, j)=> needj <= work[j]);
+          if (canRun) {
+            for (let j=0;j<m;j++) work[j] += alloc[i][j];
+            finish[i] = true;
+            seq.push(`P${i+1}`);
+            progressed = true;
+          }
+        }
+      }
+
+      if (seq.length === n) {
+        els.seq.textContent = seq.join(' → ');
+        setMessage(`✅ Estado <b>SEGURO</b>. Secuencia: <b>${seq.join(' → ')}</b>`, 'ok');
+      } else {
+        const remaining = finish.map((f, i)=> f ? null : `P${i+1}`).filter(Boolean);
+        els.seq.textContent = 'No segura';
+        setMessage(`⚠️ <b>NO SEGURO</b>. Bloqueados: <b>${remaining.join(', ')}</b>`, 'error');
+      }
+
+      // IMPORTANTE: No se escribe en 'Available' ni en ninguna celda aquí.
+    }
+
+    // ===== Relleno aleatorio (válido, no necesariamente seguro) =====
+    function randomFill() {
+      const n = Math.max(1, valNum(els.numProc.value, 5));
+      if (!els.tblAlloc.querySelector('tbody')) handleBuild(); // asegurar tablas
+
+      // Totales (si alguno es 0/vacío, asumimos 10)
+      const totals = readTotals().map(v => v || 10);
+      const m = R.length;
+      const maxM = Array.from({length:n}, ()=> Array(m).fill(0));
+      const allocM = Array.from({length:n}, ()=> Array(m).fill(0));
+
+      for (let j=0;j<m;j++){
+        let remaining = totals[j];
+        // Max aleatorio 0..min(10, total)
+        for (let i=0;i<n;i++){
+          const cap = Math.min(10, totals[j]);
+          maxM[i][j] = Math.floor(Math.random()*(cap+1));
+        }
+        // Allocation aleatorio 0..min(max, remaining)
+        for (let i=0;i<n;i++){
+          const hi = Math.min(maxM[i][j], remaining);
+          const aij = hi > 0 ? Math.floor(Math.random()*(hi+1)) : 0;
+          allocM[i][j] = aij;
+          remaining -= aij;
+        }
+      }
+
+      writeMatrix(els.tblMax, maxM);
+      writeMatrix(els.tblAlloc, allocM);
+      calcNeed(true);
+      calcAvailable(true);
+      els.seq.textContent = '—';
+      setMessage('🔀 Relleno aleatorio generado (Max ≤ Totales, Allocation ≤ Max, valores ≤ 10).', 'ok');
+    }
+
+    // ===== Ejemplo aleatorio SEGURO (el único que genera datos garantizando seguridad) =====
+    function randomSafe() {
+      const n = Math.max(1, valNum(els.numProc.value, 5));
+      if (!els.tblAlloc.querySelector('tbody')) handleBuild();
+
+      const totals = readTotals().map(v => v || 10);
+      const m = R.length;
+
+      // Orden seguro aleatorio
+      const order = Array.from({length:n}, (_,i)=>i).sort(()=> Math.random()-0.5);
+
+      // Available inicial aleatorio: work ∈ [0, Totales]
+      const work = totals.map(T => Math.floor(Math.random()*(T+1)));
+      // Presupuesto de allocation total por recurso: budget = Totales - work
+      const budget = totals.map((T, j)=> T - work[j]);
+
+      const allocM = Array.from({length:n}, ()=> Array(m).fill(0));
+      const maxM   = Array.from({length:n}, ()=> Array(m).fill(0));
+
+      for (let idx=0; idx<n; idx++){
+        const p = order[idx];
+        const remainingProc = n - idx - 1;
+
+        for (let j=0;j<m;j++){
+          // repartir allocation con cierta equidad sobre el presupuesto restante
+          const maxAllocForSpread = Math.max(0, Math.floor(budget[j] / (remainingProc+1)) * 2);
+          const allocHi = Math.min(budget[j], maxAllocForSpread);
+          const aij = allocHi > 0 ? Math.floor(Math.random()*(allocHi+1)) : 0;
+          allocM[p][j] = aij;
+          budget[j] -= aij;
+
+          const capMax = Math.min(10, totals[j]);
+          // need ≤ work actual (para que pueda completar en este orden)
+          const needHi = Math.min(work[j], capMax - aij);
+          const need = needHi > 0 ? Math.floor(Math.random()*(needHi+1)) : 0;
+
+          maxM[p][j] = aij + need; // ≤ capMax por construcción
+        }
+        // Al completar el proceso p en este orden, aumenta work += alloc[p]
+        for (let j=0;j<m;j++){
+          work[j] += allocM[p][j];
+        }
+      }
+
+      // Escribir matrices y derivadas
+      writeMatrix(els.tblMax, maxM);
+      writeMatrix(els.tblAlloc, allocM);
+      calcNeed(true);
+      calcAvailable(true);
+
+      // Mostrar verificación (solo lee; no modifica)
+      safetySequence();
+      setMessage('🟢 Ejemplo aleatorio SEGURO generado (Max ≤ Totales, Allocation ≤ Max, valores ≤ 10).', 'ok');
+    }
+
+    // ===== Reset =====
+    function resetAll() {
+      els.numProc.value = 5;
+      els.numRes.value = 3;
+      els.resNames.value = '';
+      buildResources();
+      buildTables(5);
+      setMessage('Formulario reiniciado.', 'ok');
+      els.seq.textContent = '—';
+    }
+
+    // ===== Orquestación =====
+    function handleBuild() {
+      buildResources();
+      buildTables(els.numProc.value);
+    }
+
+    // Eventos
+    els.btnBuild.addEventListener('click', handleBuild);
+    els.btnRandom.addEventListener('click', randomFill);
+    els.btnRandomSafe.addEventListener('click', randomSafe);
+    els.btnAvail.addEventListener('click', () => calcAvailable(true));
+    els.btnNeed.addEventListener('click', () => calcNeed(true));
+    els.btnSafety.addEventListener('click', safetySequence);
+    els.btnReset.addEventListener('click', resetAll);
+
+    // Generación inicial
+    buildResources();
+    buildTables(els.numProc.value);
+  </script>
+</body>
